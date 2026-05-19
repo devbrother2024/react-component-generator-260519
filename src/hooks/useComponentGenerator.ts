@@ -12,14 +12,33 @@ interface UseComponentGeneratorReturn {
   clearAll: () => void;
 }
 
+function isValidComponentArray(data: unknown): data is Array<Omit<GeneratedComponent, 'createdAt'> & { createdAt: string }> {
+  if (!Array.isArray(data)) return false;
+  return data.every((item) => {
+    return (
+      typeof item === 'object' &&
+      item !== null &&
+      typeof item.id === 'string' &&
+      typeof item.prompt === 'string' &&
+      typeof item.code === 'string' &&
+      typeof item.createdAt === 'string'
+    );
+  });
+}
+
 export function useComponentGenerator(): UseComponentGeneratorReturn {
   const [components, setComponents] = useState<GeneratedComponent[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (!saved) return [];
-      const parsed = JSON.parse(saved) as Array<Omit<GeneratedComponent, 'createdAt'> & { createdAt: string }>;
+      const parsed = JSON.parse(saved);
+      if (!isValidComponentArray(parsed)) {
+        console.warn('[useComponentGenerator] Invalid localStorage data, resetting');
+        return [];
+      }
       return parsed.map((c) => ({ ...c, createdAt: new Date(c.createdAt) }));
-    } catch {
+    } catch (err) {
+      console.warn('[useComponentGenerator] localStorage restore failed:', err instanceof Error ? err.message : 'Unknown error');
       return [];
     }
   });
