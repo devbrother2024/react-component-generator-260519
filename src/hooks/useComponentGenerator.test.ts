@@ -1,6 +1,4 @@
-import { describe, it, expect, beforeEach } from 'bun:test';
-
-const STORAGE_KEY = 'generated-components';
+import { describe, it, expect } from 'bun:test';
 
 function isValidComponentArray(data: unknown): data is Array<{
   id: string;
@@ -265,15 +263,6 @@ describe('useComponentGenerator localStorage logic', () => {
     });
 
     it('모든 컴포넌트 삭제 시뮬레이션', () => {
-      const components = [
-        {
-          id: 'comp-1',
-          prompt: 'first',
-          code: 'c1',
-          createdAt: '2026-05-19T10:00:00.000Z',
-        },
-      ];
-
       const cleared: any[] = [];
       const serialized = JSON.stringify(cleared);
       const parsed = JSON.parse(serialized);

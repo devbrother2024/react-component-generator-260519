@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { GeneratedComponent, Provider } from '../types';
 
 const STORAGE_KEY = 'generated-components';
@@ -27,6 +27,8 @@ function isValidComponentArray(data: unknown): data is Array<Omit<GeneratedCompo
 }
 
 export function useComponentGenerator(): UseComponentGeneratorReturn {
+  const isInitialMount = useRef(true);
+
   const [components, setComponents] = useState<GeneratedComponent[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -46,6 +48,10 @@ export function useComponentGenerator(): UseComponentGeneratorReturn {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(components));
   }, [components]);
 
