@@ -20,7 +20,6 @@ bun run preview   # 프로덕션 빌드 미리보기
 - API 키를 소스코드에 하드코딩하지 않는다. 반드시 `.env` 또는 런타임 입력을 사용한다.
 - AI가 생성하는 컴포넌트 코드에 `import` 문을 포함시키지 않는다. react-live 런타임은 React를 전역으로 제공한다.
 - `server/index.ts` 외부에서 AI API(Anthropic, Google)를 직접 호출하지 않는다. 모든 AI 호출은 서버를 통해서만 한다.
-- 상태 영속성 로직(localStorage, DB 등)을 추가하지 않는다. 메모리 한정 설계가 의도적이다.
 
 **항상 준수:**
 - 생성된 컴포넌트 코드는 반드시 `render(<ComponentName />)` 호출로 끝나야 한다. `ensureRenderCall()`이 처리하나, AI 프롬프트도 이를 강제한다.
