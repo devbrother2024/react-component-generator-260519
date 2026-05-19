@@ -22,6 +22,20 @@ react-live로 실행되는 코드(AI가 생성한 컴포넌트)는 샌드박스 
 
 `GeneratedComponent` 타입에 필드를 추가하려면 `src/types/index.ts`를 먼저 수정한다.
 
+## 상태 영속성 전략
+
+- **저장소**: localStorage (`generated-components` 키)
+- **저장 방식**: 
+  - 컴포넌트 목록이 변경될 때마다 `useEffect`로 자동 저장
+  - `Date` 객체는 ISO 문자열로 직렬화
+- **복원**:
+  - 초기 상태를 lazy initializer로 로드
+  - 런타임 타입 검증(`isValidComponentArray`)으로 손상된 데이터 감지
+  - 검증 실패 시 경고 로그 후 빈 배열로 fallback
+- **테스트**: `src/hooks/useComponentGenerator.test.ts` 참조
+
+이 전략으로 새로고침 후에도 생성된 컴포넌트 목록이 유지된다.
+
 ## 컴포넌트 작업 패턴
 
 - `ComponentCard`: 단일 생성 결과 표시. 탭(미리보기/코드) 전환 포함.
