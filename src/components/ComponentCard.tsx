@@ -20,6 +20,24 @@ export function ComponentCard({ component, onRemove, onRegenerate, isLoading }: 
     minute: '2-digit',
   });
 
+  if (component.isStreaming) {
+    return (
+      <div className="component-card component-card--streaming">
+        <div className="card-header">
+          <div className="card-title-group">
+            <span className="streaming-label">생성 중...</span>
+            <p className="card-prompt">{component.prompt}</p>
+          </div>
+        </div>
+        <div className="card-content">
+          <pre style={{ margin: 0, padding: '16px', overflow: 'auto', fontSize: '13px', fontFamily: 'monospace', minHeight: '120px', background: 'transparent' }}>
+            <code>{component.code}<span className="streaming-cursor" /></code>
+          </pre>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="component-card">
       <div className="card-header">
