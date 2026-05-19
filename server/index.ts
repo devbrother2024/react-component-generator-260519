@@ -126,6 +126,117 @@ async function callGoogle(prompt: string, apiKey: string): Promise<string> {
   );
 }
 
+async function streamAnthropic(
+  prompt: string,
+  apiKey: string,
+  onChunk: (text: string) => void
+): Promise<string> {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 4096,
+      stream: true,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+
+  if (!response.ok) throw new Error(`Claude API error: ${response.status}`);
+
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let accumulated = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      try {
+        const parsed = JSON.parse(line.slice(6)) as {
+          type: string;
+          delta?: { type: string; text?: string };
+        };
+        if (
+          parsed.type === 'content_block_delta' &&
+          parsed.delta?.type === 'text_delta' &&
+          parsed.delta.text
+        ) {
+          onChunk(parsed.delta.text);
+          accumulated += parsed.delta.text;
+        }
+      } catch {}
+    }
+  }
+  return accumulated;
+}
+
+async function streamGoogle(
+  prompt: string,
+  apiKey: string,
+  onChunk: (text: string) => void
+): Promise<string> {
+  const model = 'gemini-2.5-flash';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?key=${apiKey}&alt=sse`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { maxOutputTokens: 8192 },
+    }),
+  });
+
+  if (!response.ok) throw new Error(`Gemini API error: ${response.status}`);
+
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let accumulated = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      try {
+        const parsed = JSON.parse(line.slice(5)) as {
+          candidates?: Array<{
+            content?: { parts?: Array<{ text?: string }> };
+            finishReason?: string;
+          }>;
+        };
+        if (parsed.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
+          throw new Error('생성된 코드가 너무 길어 잘렸습니다. 더 간단한 컴포넌트를 요청해주세요.');
+        }
+        const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          onChunk(text);
+          accumulated += text;
+        }
+      } catch (err) {
+        if (err instanceof Error && err.message.includes('잘렸습니다')) throw err;
+      }
+    }
+  }
+  return accumulated;
+}
+
 function stripCodeFences(text: string): string {
   return text
     .replace(/^```(?:jsx|tsx|javascript|typescript)?\n?/gm, '')
@@ -218,6 +329,61 @@ const server = Bun.serve({
           { status: 500, headers: CORS_HEADERS }
         );
       }
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/generate-stream') {
+      let body: { prompt?: string; apiKey?: string; provider?: Provider };
+      try {
+        body = (await req.json()) as { prompt?: string; apiKey?: string; provider?: Provider };
+      } catch {
+        return Response.json({ error: 'Invalid JSON' }, { status: 400, headers: CORS_HEADERS });
+      }
+
+      const { prompt, apiKey, provider = 'anthropic' } = body;
+      const resolvedKey = resolveApiKey(provider, apiKey);
+
+      if (!resolvedKey) {
+        return Response.json(
+          { error: `API key is required. Set ${provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'GOOGLE_API_KEY'} in .env or enter it manually.` },
+          { status: 400, headers: CORS_HEADERS }
+        );
+      }
+
+      if (!prompt) {
+        return Response.json({ error: 'Prompt is required' }, { status: 400, headers: CORS_HEADERS });
+      }
+
+      const { readable, writable } = new TransformStream();
+      const writer = writable.getWriter();
+      const encoder = new TextEncoder();
+
+      const send = (event: string, data: object) => {
+        writer.write(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+      };
+
+      (async () => {
+        try {
+          const streamFn = provider === 'google' ? streamGoogle : streamAnthropic;
+          const raw = await streamFn(prompt, resolvedKey, (text) =>
+            send('text_delta', { type: 'text_delta', text })
+          );
+          const code = ensureRenderCall(stripCodeFences(raw));
+          send('done', { type: 'done', code });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Unknown error';
+          send('error', { type: 'error', message });
+        } finally {
+          writer.close();
+        }
+      })();
+
+      return new Response(readable, {
+        headers: {
+          ...CORS_HEADERS,
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+        },
+      });
     }
 
     return Response.json(

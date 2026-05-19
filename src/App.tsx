@@ -18,7 +18,7 @@ function App() {
     anthropic: false,
     google: false,
   });
-  const { components, isLoading, error, generate, removeComponent, clearAll } =
+  const { components, isLoading, error, generate: _generate, generateStream, removeComponent, clearAll } =
     useComponentGenerator();
 
   useEffect(() => {
@@ -35,7 +35,7 @@ function App() {
       alert(`${PROVIDER_CONFIG[provider].label} API 키를 입력하거나 .env에 설정해주세요.`);
       return;
     }
-    generate(prompt, apiKey || undefined, provider);
+    generateStream(prompt, apiKey || undefined, provider);
   };
 
   const handleProviderChange = (newProvider: Provider) => {
@@ -160,7 +160,7 @@ function App() {
           </div>
         )}
 
-        {isLoading && (
+        {isLoading && !components.some((c) => c.isStreaming) && (
           <div className="loading-card">
             <div className="loading-pulse" />
             <p>컴포넌트를 생성하고 있습니다...</p>
